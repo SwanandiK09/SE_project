@@ -25,6 +25,16 @@ router.get('/', (req, res) => {
     });
 });
 
+// GET seller's own products
+router.get('/my', authMiddleware, roleMiddleware(['SELLER']), (req, res) => {
+    const seller_id = req.user.id;
+    const query = 'SELECT p.*, c.category_name, u.name as seller_name FROM products p JOIN categories c ON p.category_id = c.category_id JOIN users u ON p.seller_id = u.user_id WHERE p.seller_id = ? ORDER BY p.product_id DESC';
+    db.all(query, [seller_id], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
 // GET a single product
 router.get('/:id', (req, res) => {
     const { id } = req.params;
