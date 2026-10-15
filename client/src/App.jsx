@@ -241,7 +241,7 @@ function HomePage({ onCartChange }) {
       )}
 
       {/* ── Artisan Callout Banner ── */}
-      <div style={{ textAlign: 'center', marginTop: '4rem', padding: '3.5rem 2rem', background: 'rgba(178,106,77,0.06)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
+      <div style={{ textAlign: 'center', marginTop: '4rem', padding: '3.5rem 2rem', background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', border: '1.5px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
         <h2>Are you an Artisan or Maker?</h2>
         <p style={{ color: 'var(--color-text-muted)', marginBottom: '1.8rem', maxWidth: '600px', margin: '0 auto 1.8rem' }}>
           Join our artisan marketplace to showcase your pottery, leather craft, jewelry, or woodwork directly to appreciative customers.
@@ -423,8 +423,8 @@ function LoginPage({ setUser }) {
     {
       role: 'CUSTOMER',
       badge: 'Customer',
-      badgeColor: '#E3F2FD',
-      textColor: '#1565C0',
+      badgeColor: 'rgba(74, 158, 226, 0.20)',
+      textColor: '#8AC5F8',
       name: 'Alice Customer',
       email: 'customer@example.com',
       password: 'password123',
@@ -433,8 +433,8 @@ function LoginPage({ setUser }) {
     {
       role: 'SELLER',
       badge: 'Artisan / Seller',
-      badgeColor: '#F3E5F5',
-      textColor: '#6A1B9A',
+      badgeColor: 'rgba(217, 107, 67, 0.22)',
+      textColor: '#F5A687',
       name: 'Bob Artisan',
       email: 'seller@example.com',
       password: 'password123',
@@ -443,8 +443,8 @@ function LoginPage({ setUser }) {
     {
       role: 'SUPPORT',
       badge: 'Customer Support Executive',
-      badgeColor: '#FFF3E0',
-      textColor: '#E65100',
+      badgeColor: 'rgba(226, 161, 74, 0.22)',
+      textColor: '#F5BE70',
       name: 'Charlie Support',
       email: 'support@example.com',
       password: 'password123',
@@ -453,8 +453,8 @@ function LoginPage({ setUser }) {
     {
       role: 'ADMIN',
       badge: 'Administrator',
-      badgeColor: '#E8F5E9',
-      textColor: '#2E7D32',
+      badgeColor: 'rgba(61, 174, 113, 0.20)',
+      textColor: '#8BE8B3',
       name: 'Diana Admin',
       email: 'admin@example.com',
       password: 'password123',
