@@ -9,6 +9,8 @@
     "server": "npm --prefix server run dev",
     "start": "npm --prefix client run dev",
     "build": "npm --prefix client run build",
+    "test": "node server/test/runTests.js",
+    "test:cart": "node server/test/testCart.js",
     "install:all": "npm --prefix server install && npm --prefix client install"
   }
 }
