@@ -62,7 +62,7 @@ function initializeDatabase() {
             order_id INTEGER PRIMARY KEY AUTOINCREMENT,
             customer_id INTEGER NOT NULL,
             order_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-            status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending', 'Accepted', 'Preparing', 'Shipped', 'Delivered')),
+            status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending', 'Accepted', 'Preparing', 'Shipped', 'Delivered', 'Cancelled')),
             total_amount REAL NOT NULL,
             shipping_address TEXT,
             FOREIGN KEY (customer_id) REFERENCES users(user_id)

@@ -3,7 +3,8 @@ import {
   BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate, useLocation
 } from 'react-router-dom';
 import {
-  ShoppingCart, LogOut, Trash2, UserCheck, CheckCircle2
+  ShoppingCart, LogOut, Trash2, UserCheck, CheckCircle2,
+  Package, Truck, Eye, Edit2, AlertCircle, X, Check, XCircle
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -18,7 +19,7 @@ api.interceptors.request.use(cfg => {
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const STATUS_ORDER = ['Pending', 'Accepted', 'Preparing', 'Shipped', 'Delivered'];
+const STATUS_ORDER = ['Pending', 'Accepted', 'Preparing', 'Shipped', 'Delivered', 'Cancelled'];
 
 function statusBadgeClass(s) {
   const m = {
@@ -27,11 +28,44 @@ function statusBadgeClass(s) {
     Preparing: 'preparing',
     Shipped: 'shipped',
     Delivered: 'delivered',
+    Cancelled: 'danger',
     'In Progress': 'info',
     Responded: 'accepted',
     Resolved: 'delivered'
   };
   return `badge badge-${m[s] || 'info'}`;
+}
+
+const AUTHORIZED_EMAIL_DOMAINS = [
+  'gmail.com', 'google.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.in', 'yahoo.co.uk',
+  'yahoo.ca', 'yahoo.com.au', 'yahoo.fr', 'yahoo.de', 'outlook.com', 'hotmail.com',
+  'live.com', 'msn.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'zoho.com',
+  'proton.me', 'protonmail.com', 'rediffmail.com', 'example.com'
+];
+
+function validateEmailAddress(email) {
+  if (!email || typeof email !== 'string') return { valid: false, msg: 'Email address is required' };
+  const trimmed = email.trim().toLowerCase();
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!regex.test(trimmed)) return { valid: false, msg: 'Please enter a valid email format' };
+  const parts = trimmed.split('@');
+  if (parts.length !== 2) return { valid: false, msg: 'Please enter a valid email address' };
+  const domain = parts[1];
+  const blocked = ['email.com', 'test.com', 'tempmail.com', 'fake.com', 'mailinator.com', 'dummy.com', '123.com'];
+  if (blocked.includes(domain)) {
+    return {
+      valid: false,
+      msg: `The email domain "${domain}" is not authorized. Please use a real email provider like Google (@gmail.com / @google.com), Yahoo, Outlook, or iCloud.`
+    };
+  }
+  const isAuth = AUTHORIZED_EMAIL_DOMAINS.includes(domain) || domain.endsWith('.edu') || domain.endsWith('.ac.in');
+  if (!isAuth) {
+    return {
+      valid: false,
+      msg: `Email domain "${domain}" is not authorized. Only legitimate providers like Google (@gmail.com / @google.com), Yahoo (@yahoo.com), Outlook, or iCloud are allowed.`
+    };
+  }
+  return { valid: true, email: trimmed };
 }
 
 function Alert({ type = 'error', msg, onClose }) {
@@ -55,6 +89,336 @@ function Spinner() {
   return (
     <div className="loading-center">
       <div className="spinner" />
+    </div>
+  );
+}
+
+// ─── ORDER TRACKING MODAL ─────────────────────────────────────────────────────
+function OrderTrackerModal({ order, onClose, onCancelOrder }) {
+  if (!order) return null;
+
+  const steps = [
+    { key: 'Pending', label: 'Order Placed', desc: 'Order received & confirmed' },
+    { key: 'Accepted', label: 'Accepted', desc: 'Artisan confirmed your order' },
+    { key: 'Preparing', label: 'Preparing', desc: 'Handcrafted with care' },
+    { key: 'Shipped', label: 'Shipped', desc: 'Dispatched with courier' },
+    { key: 'Delivered', label: 'Delivered', desc: 'Delivered to your address' }
+  ];
+
+  const isCancelled = order.status === 'Cancelled';
+  const isShippedOrDelivered = order.status === 'Shipped' || order.status === 'Delivered';
+  const currentIndex = steps.findIndex(s => s.key === order.status);
+  const activeIndex = currentIndex >= 0 ? currentIndex : 0;
+  const progressPercent = isCancelled ? 0 : (activeIndex / (steps.length - 1)) * 100;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-content animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3><Truck size={20} color="var(--color-primary)" /> Track Order #{order.order_id}</h3>
+          <button className="modal-close-btn" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-body">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>Placed On</div>
+              <strong>{new Date(order.order_date).toLocaleString()}</strong>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', textAlign: 'right' }}>Current Status</div>
+              <span className={statusBadgeClass(order.status)} style={{ fontSize: '0.9rem', padding: '0.3rem 0.8rem' }}>
+                {order.status}
+              </span>
+            </div>
+          </div>
+
+          {isCancelled ? (
+            <div className="tracker-cancelled-notice">
+              <AlertCircle size={24} style={{ flexShrink: 0 }} />
+              <div>
+                <strong>Order Cancelled</strong>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem' }}>
+                  This order has been cancelled and any payment has been refunded to your original payment method.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="order-tracker-card">
+              <div className="tracker-stepper">
+                <div className="tracker-line-bar">
+                  <div className="tracker-line-progress" style={{ width: `${progressPercent}%` }} />
+                </div>
+                {steps.map((st, i) => {
+                  const isCompleted = !isCancelled && i < activeIndex;
+                  const isActive = !isCancelled && i === activeIndex;
+                  return (
+                    <div
+                      key={st.key}
+                      className={`tracker-step-item ${isCompleted ? 'completed' : ''} ${isActive ? 'active' : ''}`}
+                    >
+                      <div className="tracker-node">
+                        {isCompleted ? <Check size={18} /> : i + 1}
+                      </div>
+                      <div className="tracker-label">{st.label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ textAlign: 'center', marginTop: '1rem', padding: '0.75rem', background: 'var(--color-surface)', borderRadius: 'var(--radius-sm)' }}>
+                <strong style={{ color: 'var(--color-primary)' }}>
+                  {steps[activeIndex]?.label}:
+                </strong>{' '}
+                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+                  {steps[activeIndex]?.desc}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div style={{ marginTop: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+            <div style={{ background: 'var(--color-surface-warm)', padding: '1rem', borderRadius: 'var(--radius-sm)' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>📍 Delivery Address</div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--color-text-main)' }}>{order.shipping_address || 'Standard Delivery Address'}</div>
+            </div>
+            <div style={{ background: 'var(--color-surface-warm)', padding: '1rem', borderRadius: 'var(--radius-sm)' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>💳 Payment Method</div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--color-text-main)' }}>
+                {order.payment_method || 'Online Payment'} • <strong>₹{Number(order.total_amount).toFixed(2)}</strong>
+              </div>
+            </div>
+          </div>
+
+          {isShippedOrDelivered && (
+            <div style={{ marginTop: '1.25rem', padding: '0.75rem 1rem', background: 'rgba(74, 158, 226, 0.12)', border: '1px solid rgba(74, 158, 226, 0.3)', borderRadius: 'var(--radius-sm)', fontSize: '0.86rem', color: '#8AC5F8' }}>
+              🔒 <strong>Cancellation Locked:</strong> This order has already been {order.status.toLowerCase()} and can no longer be cancelled.
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          {!isCancelled && !isShippedOrDelivered && onCancelOrder && (
+            <button
+              onClick={() => onCancelOrder(order.order_id)}
+              className="btn btn-outline"
+              style={{ color: '#FFA199', borderColor: '#E05345', marginRight: 'auto' }}
+            >
+              Cancel Order
+            </button>
+          )}
+          <button onClick={onClose} className="btn btn-primary btn-sm">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ORDER DETAILS MODAL ──────────────────────────────────────────────────────
+function OrderDetailsModal({ order, onClose, onCancelOrder, onTrackOrder, isSeller = false }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!order) return;
+    if (order.items && Array.isArray(order.items)) {
+      setItems(order.items);
+      setLoading(false);
+      return;
+    }
+    api.get(`/orders/${order.order_id}`)
+      .then(res => {
+        if (res.data?.items) setItems(res.data.items);
+      })
+      .catch(() => {
+        api.get(`/orders/${order.order_id}/items`)
+          .then(res => setItems(res.data || []))
+          .catch(() => setItems([]));
+      })
+      .finally(() => setLoading(false));
+  }, [order]);
+
+  if (!order) return null;
+
+  const isShippedOrDelivered = order.status === 'Shipped' || order.status === 'Delivered';
+  const isCancelled = order.status === 'Cancelled';
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-content animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3><Package size={20} color="var(--color-primary)" /> Order #{order.order_id} Details</h3>
+          <button className="modal-close-btn" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-body">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+            <div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Status</div>
+              <span className={statusBadgeClass(order.status)}>{order.status}</span>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Date Placed</div>
+              <div><strong>{new Date(order.order_date).toLocaleDateString()}</strong> {new Date(order.order_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Payment Method</div>
+              <div>{order.payment_method || 'Online Payment'}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Total Amount</div>
+              <div style={{ color: 'var(--color-primary)', fontSize: '1.1rem', fontWeight: '700' }}>
+                ₹{Number(order.total_amount).toFixed(2)}
+              </div>
+            </div>
+          </div>
+
+          {/* Customer Info (shown for Seller) */}
+          {isSeller && (
+            <div style={{ background: 'var(--color-surface-warm)', padding: '1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.25rem' }}>
+              <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', color: 'var(--color-primary)' }}>👤 Customer Information</h4>
+              <div style={{ fontSize: '0.88rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem' }}>
+                <div><strong>Name:</strong> {order.customer_name || 'Customer'}</div>
+                <div><strong>Email:</strong> {order.customer_email || '—'}</div>
+                <div><strong>Phone:</strong> {order.customer_phone || '—'}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Shipping Address */}
+          <div style={{ background: 'var(--color-surface-warm)', padding: '1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.25rem' }}>
+            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>📦 Shipping Destination</div>
+            <div style={{ fontSize: '0.9rem' }}>{order.shipping_address || 'Standard Delivery'}</div>
+          </div>
+
+          {/* Items breakdown */}
+          <h4 style={{ margin: '1rem 0 0.5rem', fontSize: '0.95rem' }}>Order Items ({items.length})</h4>
+          {loading ? (
+            <Spinner />
+          ) : items.length === 0 ? (
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>No items found for this order.</p>
+          ) : (
+            <div className="order-detail-items">
+              {items.map(item => (
+                <div key={item.item_id || item.product_id} className="order-detail-item-row">
+                  {item.image && (
+                    <img src={item.image} alt={item.name} className="order-detail-img" />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '600', fontSize: '0.92rem' }}>{item.name}</div>
+                    <div style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
+                      Qty: {item.quantity} × ₹{Number(item.price).toFixed(2)}
+                    </div>
+                  </div>
+                  <div style={{ fontWeight: '700', fontSize: '0.95rem' }}>
+                    ₹{(item.quantity * item.price).toFixed(2)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {isShippedOrDelivered && (
+            <div style={{ marginTop: '1rem', padding: '0.6rem 0.9rem', background: 'rgba(74, 158, 226, 0.1)', border: '1px solid rgba(74, 158, 226, 0.25)', borderRadius: 'var(--radius-sm)', fontSize: '0.84rem', color: '#8AC5F8' }}>
+              🔒 Shipped orders cannot be cancelled by customer.
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          {onTrackOrder && (
+            <button onClick={() => { onClose(); onTrackOrder(order); }} className="btn btn-outline btn-sm">
+              <Truck size={14} /> Track Order
+            </button>
+          )}
+          {!isSeller && !isCancelled && !isShippedOrDelivered && onCancelOrder && (
+            <button
+              onClick={() => { onClose(); onCancelOrder(order.order_id); }}
+              className="btn btn-outline btn-sm"
+              style={{ color: '#FFA199', borderColor: '#E05345' }}
+            >
+              Cancel Order
+            </button>
+          )}
+          <button onClick={onClose} className="btn btn-primary btn-sm">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SELLER EDIT ORDER DETAILS MODAL ─────────────────────────────────────────
+function SellerEditOrderModal({ order, onClose, onSave }) {
+  const [status, setStatus] = useState(order.status || 'Pending');
+  const [address, setAddress] = useState(order.shipping_address || '');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError('');
+    try {
+      await onSave(order.order_id, {
+        status,
+        shipping_address: address
+      });
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.msg || err.message || 'Failed to update order');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-content animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3><Edit2 size={20} color="var(--color-primary)" /> Update Order #{order.order_id}</h3>
+          <button className="modal-close-btn" onClick={onClose}>×</button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <Alert type="error" msg={error} onClose={() => setError('')} />
+
+            <div className="form-group">
+              <label className="form-label">Order Status</label>
+              <select
+                className="form-input"
+                value={status}
+                onChange={e => setStatus(e.target.value)}
+              >
+                {STATUS_ORDER.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <small style={{ color: 'var(--color-text-muted)', display: 'block', marginTop: '0.3rem', fontSize: '0.8rem' }}>
+                * Marking as "Shipped" or "Delivered" locks customer cancellation. Marking as "Cancelled" will automatically restock items.
+              </small>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Shipping / Delivery Address & Notes</label>
+              <textarea
+                className="form-input"
+                rows={3}
+                value={address}
+                onChange={e => setAddress(e.target.value)}
+                placeholder="Enter customer shipping address or delivery instructions..."
+              />
+            </div>
+          </div>
+
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn btn-outline btn-sm">Cancel</button>
+            <button type="submit" disabled={submitting} className="btn btn-primary btn-sm">
+              {submitting ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -480,10 +844,15 @@ function LoginPage({ setUser }) {
     setLoading(true);
 
     try {
+      const emailCheck = validateEmailAddress(form.email);
+      if (!emailCheck.valid) {
+        throw new Error(emailCheck.msg);
+      }
+
       if (isLogin) {
         // Sign In
         const res = await api.post('/auth/login', {
-          email: form.email,
+          email: emailCheck.email,
           password: form.password
         });
         localStorage.setItem('token', res.data.token);
@@ -496,12 +865,11 @@ function LoginPage({ setUser }) {
       } else {
         // Register Account
         if (!form.name.trim()) throw new Error('Please enter your full name');
-        if (!form.email.trim()) throw new Error('Please enter your email address');
         if (!form.password) throw new Error('Please enter a password');
 
         const res = await api.post('/auth/register', {
           name: form.name.trim(),
-          email: form.email.trim(),
+          email: emailCheck.email,
           password: form.password,
           phone: form.phone || null,
           role: form.role
@@ -584,10 +952,13 @@ function LoginPage({ setUser }) {
               type="email"
               className="form-input"
               required
-              placeholder="you@example.com"
+              placeholder="you@gmail.com"
               value={form.email}
               onChange={e => setForm({ ...form, email: e.target.value })}
             />
+            <small style={{ color: 'var(--color-text-muted)', fontSize: '0.78rem', display: 'block', marginTop: '0.35rem' }}>
+              ✓ Only authentic email domains allowed (e.g. @gmail.com, @google.com, @yahoo.com, @outlook.com, @icloud.com). Placeholder domains like @email.com are rejected.
+            </small>
           </div>
 
           <div className="form-group">
@@ -869,6 +1240,10 @@ function CustomerDashboard({ user }) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('orders');
 
+  const [selectedDetailsOrder, setSelectedDetailsOrder] = useState(null);
+  const [selectedTrackingOrder, setSelectedTrackingOrder] = useState(null);
+  const [actionMsg, setActionMsg] = useState({ type: 'success', text: '' });
+
   const [ticketOrder, setTicketOrder] = useState('');
   const [ticketDesc, setTicketDesc] = useState('');
   const [ticketMsg, setTicketMsg] = useState('');
@@ -890,6 +1265,27 @@ function CustomerDashboard({ user }) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleCancelOrder = async (order_id) => {
+    if (!window.confirm(`Are you sure you want to cancel Order #${order_id}? Any payment will be refunded immediately.`)) {
+      return;
+    }
+    try {
+      const res = await api.post(`/orders/${order_id}/cancel`);
+      setActionMsg({ type: 'success', text: res.data.msg || `Order #${order_id} was successfully cancelled.` });
+      if (selectedDetailsOrder?.order_id === order_id) {
+        setSelectedDetailsOrder(prev => prev ? { ...prev, status: 'Cancelled' } : null);
+      }
+      if (selectedTrackingOrder?.order_id === order_id) {
+        setSelectedTrackingOrder(prev => prev ? { ...prev, status: 'Cancelled' } : null);
+      }
+      fetchData();
+      setTimeout(() => setActionMsg({ type: 'success', text: '' }), 5000);
+    } catch (err) {
+      setActionMsg({ type: 'error', text: err.response?.data?.msg || 'Could not cancel order.' });
+      setTimeout(() => setActionMsg({ type: 'error', text: '' }), 6000);
+    }
+  };
 
   const handleRaiseComplaint = async (e) => {
     e.preventDefault();
@@ -920,6 +1316,27 @@ function CustomerDashboard({ user }) {
 
   return (
     <div className="animate-fade-in">
+      {/* Modals */}
+      {selectedTrackingOrder && (
+        <OrderTrackerModal
+          order={selectedTrackingOrder}
+          onClose={() => setSelectedTrackingOrder(null)}
+          onCancelOrder={handleCancelOrder}
+        />
+      )}
+      {selectedDetailsOrder && (
+        <OrderDetailsModal
+          order={selectedDetailsOrder}
+          onClose={() => setSelectedDetailsOrder(null)}
+          onCancelOrder={handleCancelOrder}
+          onTrackOrder={(o) => {
+            setSelectedDetailsOrder(null);
+            setSelectedTrackingOrder(o);
+          }}
+          isSeller={false}
+        />
+      )}
+
       <div className="page-header">
         <div>
           <h2>👤 {user ? `${user.name}'s Dashboard` : 'My Dashboard'}</h2>
@@ -927,6 +1344,12 @@ function CustomerDashboard({ user }) {
         </div>
         <Link to="/products" className="btn btn-primary btn-sm">Shop More</Link>
       </div>
+
+      {actionMsg.text && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <Alert type={actionMsg.type} msg={actionMsg.text} onClose={() => setActionMsg({ type: 'success', text: '' })} />
+        </div>
+      )}
 
       <div className="stats-grid">
         <div className="stat-card">
@@ -983,6 +1406,7 @@ function CustomerDashboard({ user }) {
                   <th>Total</th>
                   <th>Status</th>
                   <th>Shipping Address</th>
+                  <th>Order Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -992,7 +1416,50 @@ function CustomerDashboard({ user }) {
                     <td>{new Date(o.order_date).toLocaleDateString()}</td>
                     <td><strong>₹{Number(o.total_amount).toFixed(2)}</strong></td>
                     <td><span className={statusBadgeClass(o.status)}>{o.status}</span></td>
-                    <td style={{ maxWidth: '280px', color: 'var(--color-text-muted)' }}>{o.shipping_address || 'Standard Delivery'}</td>
+                    <td style={{ maxWidth: '240px', color: 'var(--color-text-muted)', fontSize: '0.88rem' }}>
+                      {o.shipping_address || 'Standard Delivery'}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => setSelectedDetailsOrder(o)}
+                          className="btn btn-outline btn-sm"
+                          title="View complete order details & items"
+                          style={{ padding: '0.25rem 0.55rem', fontSize: '0.78rem' }}
+                        >
+                          <Eye size={13} /> Details
+                        </button>
+                        <button
+                          onClick={() => setSelectedTrackingOrder(o)}
+                          className="btn btn-outline btn-sm"
+                          title="Track delivery progress"
+                          style={{ padding: '0.25rem 0.55rem', fontSize: '0.78rem' }}
+                        >
+                          <Truck size={13} /> Track
+                        </button>
+                        {o.status === 'Cancelled' ? (
+                          <span style={{ fontSize: '0.75rem', color: '#FFA199', fontWeight: '600', padding: '0.2rem 0.4rem' }}>
+                            Cancelled
+                          </span>
+                        ) : o.status === 'Shipped' || o.status === 'Delivered' ? (
+                          <span
+                            title="Cannot cancel order once it has been shipped or delivered"
+                            style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)', padding: '0.2rem 0.45rem', border: '1px dashed var(--color-border)', borderRadius: '4px' }}
+                          >
+                            🔒 {o.status}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleCancelOrder(o.order_id)}
+                            className="btn btn-outline btn-sm"
+                            title="Cancel order before shipping"
+                            style={{ padding: '0.25rem 0.55rem', fontSize: '0.78rem', color: '#FFA199', borderColor: 'rgba(224, 83, 69, 0.4)' }}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1214,8 +1681,9 @@ function CheckoutPage({ onCartChange }) {
   const [address, setAddress] = useState('102 Lotus Enclave, MG Road, Bengaluru, Karnataka - 560001');
   const [paymentMethod, setPaymentMethod] = useState('UPI');
   const [placing, setPlacing] = useState(false);
-  const [successOrder, setSuccessOrder] = useState(null);
-  const [error, setError] = useState('');
+  const [placedOrder, setPlacedOrder] = useState(null);
+  const [trackingModalOpen, setTrackingModalOpen] = useState(false);
+  const [cancelFeedback, setCancelFeedback] = useState('');
 
   useEffect(() => {
     api.get('/cart')
@@ -1236,6 +1704,16 @@ function CheckoutPage({ onCartChange }) {
         shipping_address: address,
         payment_method: paymentMethod
       });
+      const orderInfo = res.data.order || {
+        order_id: res.data.order_id,
+        shipping_address: address,
+        payment_method: paymentMethod,
+        total_amount: total,
+        status: 'Pending',
+        order_date: new Date().toISOString(),
+        items: [...items]
+      };
+      setPlacedOrder(orderInfo);
       setSuccessOrder(res.data.order_id);
       if (onCartChange) onCartChange();
     } catch (err) {
@@ -1245,22 +1723,143 @@ function CheckoutPage({ onCartChange }) {
     }
   };
 
+  const handleCancelPlacedOrder = async () => {
+    if (!placedOrder) return;
+    if (!window.confirm(`Are you sure you want to cancel Order #${placedOrder.order_id}? Payment of ₹${Number(placedOrder.total_amount).toFixed(2)} will be refunded.`)) {
+      return;
+    }
+    try {
+      const res = await api.post(`/orders/${placedOrder.order_id}/cancel`);
+      setPlacedOrder(prev => ({ ...prev, status: 'Cancelled' }));
+      setCancelFeedback(res.data.msg || 'Order has been successfully cancelled.');
+    } catch (err) {
+      setCancelFeedback(err.response?.data?.msg || 'Could not cancel order.');
+    }
+  };
+
   if (loading) return <Spinner />;
 
-  if (successOrder) {
+  if (placedOrder) {
+    const isCancelled = placedOrder.status === 'Cancelled';
+    const isShipped = placedOrder.status === 'Shipped' || placedOrder.status === 'Delivered';
+
     return (
-      <div className="animate-fade-in" style={{ textAlign: 'center', padding: '4rem 1rem' }}>
-        <div style={{ fontSize: '4.5rem', marginBottom: '1rem' }}>🎉</div>
-        <h2>Order Placed Successfully!</h2>
-        <p style={{ color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
-          Order <strong>#{successOrder}</strong> has been confirmed.
-        </p>
-        <div className="alert alert-success" style={{ maxWidth: '440px', margin: '1.5rem auto' }}>
-          Payment of ₹{total.toFixed(0)} via {paymentMethod} completed ✓
-        </div>
-        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '2rem' }}>
-          <Link to="/customer" className="btn btn-primary">View My Orders</Link>
-          <Link to="/products" className="btn btn-outline">Continue Shopping</Link>
+      <div className="animate-fade-in" style={{ padding: '2rem 1rem' }}>
+        {trackingModalOpen && (
+          <OrderTrackerModal
+            order={placedOrder}
+            onClose={() => setTrackingModalOpen(false)}
+            onCancelOrder={handleCancelPlacedOrder}
+          />
+        )}
+
+        <div className="order-receipt-card">
+          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+            <div style={{ fontSize: '3.5rem', marginBottom: '0.5rem' }}>{isCancelled ? '❌' : '🎉'}</div>
+            <h2>{isCancelled ? 'Order Cancelled' : 'Order Placed Successfully!'}</h2>
+            <p style={{ color: 'var(--color-text-muted)' }}>
+              Order <strong>#{placedOrder.order_id}</strong> • Placed on {new Date(placedOrder.order_date).toLocaleDateString()}
+            </p>
+            <div style={{ marginTop: '0.75rem' }}>
+              <span className={statusBadgeClass(placedOrder.status)} style={{ fontSize: '0.92rem', padding: '0.35rem 0.9rem' }}>
+                Status: {placedOrder.status}
+              </span>
+            </div>
+          </div>
+
+          {cancelFeedback && (
+            <div style={{ marginBottom: '1.25rem' }}>
+              <Alert type={isCancelled ? 'info' : 'error'} msg={cancelFeedback} onClose={() => setCancelFeedback('')} />
+            </div>
+          )}
+
+          {/* Mini Stepper Preview */}
+          {!isCancelled && (
+            <div style={{ background: 'var(--color-surface-warm)', padding: '1.2rem', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', border: '1px solid var(--color-border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <span style={{ fontWeight: '600', fontSize: '0.92rem' }}>🚚 Order Progress Tracker</span>
+                <button
+                  onClick={() => setTrackingModalOpen(true)}
+                  className="btn btn-outline btn-sm"
+                  style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem' }}
+                >
+                  <Truck size={13} /> Full Tracker View
+                </button>
+              </div>
+              <div style={{ fontSize: '0.86rem', color: 'var(--color-text-muted)' }}>
+                Current Stage: <strong style={{ color: 'var(--color-primary)' }}>{placedOrder.status}</strong> — Handcrafting in progress. Artisan will dispatch shortly.
+              </div>
+            </div>
+          )}
+
+          {/* Details Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
+            <div style={{ background: 'var(--color-surface-warm)', padding: '1rem', borderRadius: 'var(--radius-sm)' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '0.3rem' }}>📍 Delivery Destination</div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--color-text-main)' }}>{placedOrder.shipping_address}</div>
+            </div>
+            <div style={{ background: 'var(--color-surface-warm)', padding: '1rem', borderRadius: 'var(--radius-sm)' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '0.3rem' }}>💳 Payment Method</div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--color-text-main)' }}>
+                {placedOrder.payment_method} • <strong>{isCancelled ? 'Refunded ✓' : 'Completed ✓'}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Items Breakdown */}
+          <h4 style={{ margin: '1.5rem 0 0.75rem', fontSize: '1.05rem' }}>Items Ordered ({placedOrder.items?.length || 0})</h4>
+          <div className="order-detail-items">
+            {(placedOrder.items || []).map((item, idx) => (
+              <div key={item.product_id || idx} className="order-detail-item-row">
+                {item.image && (
+                  <img src={item.image} alt={item.name} className="order-detail-img" />
+                )}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: '600', fontSize: '0.94rem' }}>{item.name}</div>
+                  <div style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
+                    Qty: {item.quantity} × ₹{Number(item.price).toFixed(2)}
+                  </div>
+                </div>
+                <div style={{ fontWeight: '700', fontSize: '1rem' }}>
+                  ₹{(item.quantity * item.price).toFixed(2)}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', paddingTop: '1rem', borderTop: '2px solid var(--color-border)' }}>
+            <span style={{ fontSize: '1.1rem', fontWeight: '700' }}>Grand Total Paid:</span>
+            <span style={{ fontSize: '1.4rem', fontWeight: '800', color: 'var(--color-primary)' }}>
+              ₹{Number(placedOrder.total_amount).toFixed(2)}
+            </span>
+          </div>
+
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--color-border)' }}>
+            <button
+              onClick={() => setTrackingModalOpen(true)}
+              className="btn btn-primary"
+            >
+              <Truck size={16} /> Track Order Live
+            </button>
+
+            {!isCancelled && !isShipped && (
+              <button
+                onClick={handleCancelPlacedOrder}
+                className="btn btn-outline"
+                style={{ color: '#FFA199', borderColor: '#E05345' }}
+              >
+                Cancel Order
+              </button>
+            )}
+
+            <Link to="/customer" className="btn btn-outline" style={{ marginLeft: 'auto' }}>
+              My Orders
+            </Link>
+            <Link to="/products" className="btn btn-outline">
+              Continue Shopping
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -1340,6 +1939,10 @@ function SellerDashboard({ user }) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('products');
 
+  const [viewOrderModal, setViewOrderModal] = useState(null);
+  const [editOrderModal, setEditOrderModal] = useState(null);
+  const [sellerOrderFeedback, setSellerOrderFeedback] = useState({ type: 'success', msg: '' });
+
   const [newProd, setNewProd] = useState({
     name: '',
     category_id: 1,
@@ -1398,20 +2001,76 @@ function SellerDashboard({ user }) {
   const handleUpdateOrderStatus = async (order_id, newStatus) => {
     try {
       await api.put(`/orders/${order_id}/status`, { status: newStatus });
+      setSellerOrderFeedback({ type: 'success', msg: `Order #${order_id} status updated to ${newStatus}` });
       fetchSellerData();
-    } catch {
-      alert('Failed to update status');
+      setTimeout(() => setSellerOrderFeedback({ type: 'success', msg: '' }), 4000);
+    } catch (err) {
+      setSellerOrderFeedback({ type: 'error', msg: err.response?.data?.msg || 'Failed to update status' });
+      setTimeout(() => setSellerOrderFeedback({ type: 'error', msg: '' }), 5000);
+    }
+  };
+
+  const handleUpdateOrderDetails = async (order_id, data) => {
+    try {
+      await api.put(`/orders/${order_id}`, data);
+      setSellerOrderFeedback({ type: 'success', msg: `Order #${order_id} updated successfully!` });
+      fetchSellerData();
+      setTimeout(() => setSellerOrderFeedback({ type: 'success', msg: '' }), 4000);
+    } catch (err) {
+      setSellerOrderFeedback({ type: 'error', msg: err.response?.data?.msg || 'Failed to update order details' });
+      setTimeout(() => setSellerOrderFeedback({ type: 'error', msg: '' }), 5000);
+    }
+  };
+
+  const handleDeleteOrder = async (order_id) => {
+    if (!window.confirm(`Are you sure you want to delete Order #${order_id}? This will permanently remove this order and its records.`)) {
+      return;
+    }
+    try {
+      const res = await api.delete(`/orders/${order_id}`);
+      setSellerOrderFeedback({ type: 'success', msg: res.data.msg || `Order #${order_id} deleted successfully.` });
+      fetchSellerData();
+      setTimeout(() => setSellerOrderFeedback({ type: 'success', msg: '' }), 5000);
+    } catch (err) {
+      setSellerOrderFeedback({ type: 'error', msg: err.response?.data?.msg || 'Failed to delete order' });
+      setTimeout(() => setSellerOrderFeedback({ type: 'error', msg: '' }), 6000);
     }
   };
 
   return (
     <div className="animate-fade-in">
+      {/* Seller Order Modals */}
+      {viewOrderModal && (
+        <OrderDetailsModal
+          order={viewOrderModal}
+          onClose={() => setViewOrderModal(null)}
+          isSeller={true}
+        />
+      )}
+      {editOrderModal && (
+        <SellerEditOrderModal
+          order={editOrderModal}
+          onClose={() => setEditOrderModal(null)}
+          onSave={handleUpdateOrderDetails}
+        />
+      )}
+
       <div className="page-header">
         <div>
           <h2>Artisan Studio: {user.name}</h2>
           <p style={{ color: 'var(--color-text-muted)' }}>Manage handcrafted product listings and fulfill customer orders</p>
         </div>
       </div>
+
+      {sellerOrderFeedback.msg && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <Alert
+            type={sellerOrderFeedback.type}
+            msg={sellerOrderFeedback.msg}
+            onClose={() => setSellerOrderFeedback({ type: 'success', msg: '' })}
+          />
+        </div>
+      )}
 
       <div className="stats-grid">
         <div className="stat-card">
@@ -1566,23 +2225,48 @@ function SellerDashboard({ user }) {
               <thead>
                 <tr>
                   <th>Order #</th>
-                  <th>Customer</th>
-                  <th>Amount</th>
+                  <th>Customer Info</th>
+                  <th>Delivery Address</th>
+                  <th>Total</th>
                   <th>Status</th>
-                  <th>Update Order Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {orders.map(o => (
                   <tr key={o.order_id}>
-                    <td><strong>#{o.order_id}</strong></td>
-                    <td>{o.customer_name || 'Customer'}</td>
-                    <td><strong>₹{Number(o.total_amount).toFixed(0)}</strong></td>
-                    <td><span className={statusBadgeClass(o.status)}>{o.status}</span></td>
+                    <td>
+                      <strong>#{o.order_id}</strong>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                        {new Date(o.order_date).toLocaleDateString()}
+                      </div>
+                    </td>
+                    <td>
+                      <div><strong>{o.customer_name || 'Customer'}</strong></div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                        {o.customer_email || '—'}
+                      </div>
+                      {o.customer_phone && (
+                        <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                          📞 {o.customer_phone}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ maxWidth: '200px', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                      {o.shipping_address || 'Standard Delivery'}
+                    </td>
+                    <td>
+                      <strong style={{ color: 'var(--color-primary)' }}>
+                        ₹{Number(o.total_amount).toFixed(2)}
+                      </strong>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                        {o.payment_method || 'Online'}
+                      </div>
+                    </td>
                     <td>
                       <select
                         className="form-input"
-                        style={{ width: 'auto', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                        style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.82rem' }}
                         value={o.status}
                         onChange={e => handleUpdateOrderStatus(o.order_id, e.target.value)}
                       >
@@ -1590,6 +2274,34 @@ function SellerDashboard({ user }) {
                           <option key={s} value={s}>{s}</option>
                         ))}
                       </select>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => setViewOrderModal(o)}
+                          className="btn btn-outline btn-sm"
+                          title="View order items"
+                          style={{ padding: '0.25rem 0.55rem', fontSize: '0.78rem' }}
+                        >
+                          <Eye size={13} /> Items
+                        </button>
+                        <button
+                          onClick={() => setEditOrderModal(o)}
+                          className="btn btn-outline btn-sm"
+                          title="Edit order status and address"
+                          style={{ padding: '0.25rem 0.55rem', fontSize: '0.78rem' }}
+                        >
+                          <Edit2 size={13} /> Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteOrder(o.order_id)}
+                          className="btn btn-outline btn-sm"
+                          title="Delete Order"
+                          style={{ padding: '0.25rem 0.55rem', fontSize: '0.78rem', color: '#FFA199', borderColor: 'rgba(224, 83, 69, 0.4)' }}
+                        >
+                          <Trash2 size={13} /> Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
